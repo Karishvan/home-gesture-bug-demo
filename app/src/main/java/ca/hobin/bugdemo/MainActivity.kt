@@ -2,9 +2,10 @@ package ca.hobin.bugdemo
 
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
-import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.net.Uri
 import android.os.Bundle
-import android.os.UserManager.DISALLOW_CONFIG_WIFI
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -40,13 +41,58 @@ class MainActivity : ComponentActivity() {
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Button(onClick = { devicePolicyManager.addUserRestriction(adminComponent, DISALLOW_CONFIG_WIFI) }) {
-                Text("Set DISALLOW_CONFIG_WIFI")
+            Button(onClick = { createLockdownRestrictions()
+            }) {
+                Text("Enable Lockdown")
             }
-            Button(onClick = { devicePolicyManager.clearUserRestriction(adminComponent, DISALLOW_CONFIG_WIFI) }) {
-                Text("Unset DISALLOW_CONFIG_WIFI")
+            Button(onClick = {
+                try {
+                    val intent = Intent(Intent.ACTION_VIEW).apply {
+                        data = Uri.parse("https://www.google.com")
+                        setPackage("com.android.chrome")
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+
+                    // Verify Chrome is installed
+                    if (intent.resolveActivity(packageManager) != null) {
+                        startActivity(intent)
+                    } else {
+                        // Fallback to default browser
+                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com")))
+                    }
+
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }) {
+                Text("Open Chrome")
             }
         }
+    }
+
+    fun createHomeLauncherIntentFilter(): IntentFilter {
+        val intentFilter = IntentFilter(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_HOME)
+            addCategory(Intent.CATEGORY_DEFAULT)
+        }
+        return intentFilter
+    }
+
+    fun createLockdownRestrictions() {
+        val lockTaskFeatures = DevicePolicyManager.LOCK_TASK_FEATURE_HOME or
+            DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS or
+            DevicePolicyManager.LOCK_TASK_FEATURE_KEYGUARD
+        devicePolicyManager.setLockTaskPackages(adminComponent,
+            arrayOf("ca.hobin.bugdemo", "com.android.chrome")
+        )
+        devicePolicyManager.clearPackagePersistentPreferredActivities(adminComponent, "com.google.android.apps.nexuslauncher")
+        val componentName = ComponentName(this, MainActivity::class.java)
+        devicePolicyManager.addPersistentPreferredActivity(adminComponent, createHomeLauncherIntentFilter(), componentName)
+        val nexus = arrayOf("com.google.android.apps.nexuslauncher")
+        devicePolicyManager.setPackagesSuspended(adminComponent, nexus, true)
+        devicePolicyManager.setLockTaskFeatures(adminComponent, lockTaskFeatures)
+        val activity = this@MainActivity
+        activity.startLockTask()
     }
 
     @Preview(showBackground = true)
